@@ -1,0 +1,196 @@
+---
+title: "The health and  economic impact of severe weather events in USA 
+based on NOAA Storm Database  "
+author: "Djamila Azib"
+date: "March 24, 2018"
+output:
+  pdf_document: default
+  
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(dplyr)
+```
+
+# Synopsis
+
+The goal of the assignment is to explore the NOAA Storm Database in order to found out the effects of severe weather events on both population and economy in USA.
+Specifically, the analysis  aims  to answer the two  following  questions :
+
+1. Across the United States, which types of events are most harmful with respect to population health?
+
+2. Across the United States, which types of events have the greatest economic consequences?
+
+The NOAA Storm Database  covers the time period between 1950 and November 2011.This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.
+
+Our anlysis shows that Tornadoes are the most devastating ,causes the most large fatalities and injuries.The flood have the largest total economic impact out of all severe weather events.
+
+
+
+# Data Processing
+
+The data can be downloaded from the course website: 
+
+[_**Storm Data**_](https://www.coursera.org/learn/reproducible-research/peer/OMZ37/course-project-2)
+
+Documentation of the database is available at National Weather Service: 
+[_**Storm Data Documentation**_](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf)
+National Climatic Data Center Storm Events :
+[_**FAQ**_](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf)
+
+## required library
+for this project we will use:
+
+library(ggplot2)
+
+library(dplyr)
+
+## Loading data 
+The data for this assignment come in the form of a comma-separated-value compressed via the bzip2 algorithm to reduce its size.
+The data is downlaoded from the course website by using download.file(). 
+
+read.csv()  can handle this  compressed  file automatically ,read the  file in table format and create a data frame.
+
+```{r}
+bz2File = "storm.csv.bz2"
+#download the file is it does not exist
+if (!file.exists(bz2File)){
+url <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+download.file(url,bz2File,method="curl")
+}
+
+#read the  file in table format and create a data frame.
+stormData<-read.csv( bz2File ,stringsAsFactors = FALSE)
+str(stormData)
+```
+
+The dataset contains  902297 obs. of  37 variables.
+
+## Extracting the required data
+
+The variables required  to analyze the impact of severe weather events on the public health and economy are :
+
+  1. EVTYPE: Weather event
+  2. INJURIES: Non-fatal injuries
+  3. FATALITIES: Fatal injuries
+  4. CROPDMG: Dollar amount of damage in crops, without level of magnitude
+  5. CROPDMGEXP: Level of Magnitude of the damage in crops
+  6. PROPDMG: Dollar amount of property damage, without level of magnitude
+  7. CROPDMGEXP: Level of Magnitude of property damage
+
+select() (package dplyr) get the required columns from the data set.
+
+
+```{r}
+
+requiredColomns<-c("EVTYPE", "INJURIES", "FATALITIES","CROPDMG", "CROPDMGEXP", "PROPDMG", "PROPDMGEXP")
+stormDataSubset <- stormData %>% select( requiredColomns)
+
+```
+
+## processing data for Health impact analysis
+
+Sum number of fatalities by Event type  and sort  it in descending order 
+
+Sum number of injuries by Event and sort  it in descending order.
+
+```{r}
+#group by envent type et sum fatalities
+fatalByEvtype <- stormDataSubset%>%group_by(EVTYPE )%>% 
+  summarise(fatalities = sum(FATALITIES),na.rm=TRUE)
+#sort in descending order fatalities
+fatalByEvtype<-fatalByEvtype%>%arrange(-fatalities)
+
+#group by envent type et sum injuries
+injuryByEvtype<-stormDataSubset%>%group_by(EVTYPE)%>%
+  summarise(injuries = sum(INJURIES),na.rm=TRUE)
+#sort in descending order injuries
+injuryByEvtype<-injuryByEvtype%>%arrange(-injuries)
+```
+
+## Processing  data for economic consequences analysis
+
+```{r}
+#get unique value for the crop exponent data CROPDMGEXP 
+print(cropEXp<-unique(toupper(stormDataSubset$CROPDMGEXP)))
+#get unique value for  the property exponent PROPDMGEXP
+print(propExp<-unique(toupper(stormDataSubset$PROPDMGEXP)))
+
+valExp<-c(1000, 1e+06 ,1,  1e+09, 0, 1, 1e+05 ,1e+06 ,0 ,1e+04, 100, 1000,100, 1e+07,0, 10, 1e+08)
+
+#create a data frame  with two columns x=propExp and val the corresponding numerical values
+## with just propExp because cropEXp is include in propexp
+print(mp<-data.frame(x=propExp,val= valExp))
+
+#expNum return the corresponding numerical value of exp
+expNum <- function(exp){
+
+return(mp$val[mp$x==toupper(exp)])
+}
+#each element is the result of applying expNum to the corresponding element of stormDataSubset$PROPDMGEXP,we get then the corresponding numerical values
+propExpNum <- sapply(stormDataSubset$PROPDMGEXP, function(exp) expNum(exp))
+
+# Same ,we get the corresponding numerical values to each element of stormDataSubset$CROPDMGEXP
+cropExpNum<- sapply(stormDataSubset$CROPDMGEXP, function(exp) expNum(exp))
+
+#properties damage  and crop damage in billion dollars
+stormDataSubset$PropDMGVal <- (stormDataSubset$PROPDMG * propExpNum)/10^9
+stormDataSubset$CropDMGVal <- (stormDataSubset$CROPDMG * cropExpNum)/10^9
+
+# sum properties damage  and crop damage
+stormDataSubset$totalDMGval <- stormDataSubset$CropDMGVal + stormDataSubset$PropDMGVal
+
+#group by envent type and sum totalDMGval
+damageByEvtype <- stormDataSubset%>%group_by(EVTYPE)%>% summarise(totalDamage = sum(totalDMGval ,na.rm=TRUE))
+#sort in descending order totalDamage
+damageByEvtype<-damageByEvtype%>%arrange(-totalDamage)
+```
+  
+
+# Results 
+
+## Health impact of severe weather events
+
+```{r}
+
+#top 10 event type that cause fatalities
+topFatal<-fatalByEvtype%>%head(10)
+
+#plot top 10 Severe Weather Events that cause fatalities
+
+ggplot(data=topFatal, aes(x=EVTYPE, y=fatalities )) +
+geom_bar(stat="identity",fill="lightgray") + xlab("Weather Event Type") + ylab("Fatalities") +
+ggtitle("Top 10 Severe Weather Events that cause fatalities") + geom_text(aes(label=fatalities), vjust=-0.2, size=3.5)+theme(axis.text.x = element_text(angle = 36, hjust = 1))
+
+
+#top 10 event type that causes injuries
+topInjury<-injuryByEvtype%>%head(10)
+ggplot(data=topInjury, aes(x=EVTYPE, y=injuries)) +
+geom_bar(stat="identity",fill="lightgray") + xlab("Weather Event Type") + ylab("Injuries") +
+ggtitle("Top 10 Severe Weather Events that cause injuries") + geom_text(aes(label=injuries), vjust=-0.2, size=3.5)+theme(axis.text.x = element_text(angle = 36, hjust = 1))
+```
+
+
+## Economic impact of severe weather events
+
+
+```{r}
+#top  event type that impact economy
+topdamage<-damageByEvtype%>%head(10)
+
+#plot Top 10 Severe Weather Events that Impact economy
+ggplot(data=topdamage, aes(x=EVTYPE, y=totalDamage )) +
+geom_bar(stat="identity",fill="lightgray") + xlab(" Event Type") + ylab("total damage prop and crop") +
+ggtitle("Top 10 Severe Weather Events that Impact ecomony") + geom_text(aes(label=totalDamage), vjust=-0.3, size=2.5)+theme(axis.text.x = element_text(angle = 36, hjust = 1))
+
+```
+
+
+# Conclusion
+
+Tornadoes are the most devastating.They cause the largest number of deaths(5633) and injuries(91346).
+ 
+Flood events have the largest total economic impact.They costed 150.3 billion dolllars.
+hurricanes/typhoons costed 71.9 billions of dollars,tornadoes costed 57.4 billion of dollars.
